@@ -1,0 +1,55 @@
+// Metrics stored per evaluation of each ModelSpec.
+// NOTE: this file is for reference only, changes to this file will not affect
+// the code unless you compile the proto using protoc, which can be installed
+// from https://github.com/protocolbuffers/protobuf/releases.
+syntax = "proto2";
+
+package nasbench;
+
+message ModelMetrics {
+  // Metrics that are evaluated at each checkpoint. Each ModelMetrics will
+  // contain multiple EvaluationData messages evaluated at various points during
+  // training, including the initialization before any steps are taken.
+  repeated EvaluationData evaluation_data = 1;
+
+  // Other fixed metrics (does not change over training) go here.
+
+  // Parameter count of all trainable variables.
+  optional int32 trainable_parameters = 2;
+
+  // Total time for all training and evaluation (mostly used for diagnostic
+  // purposes).
+  optional double total_time = 3;
+}
+
+message EvaluationData {
+  // Current epoch at the time of this evaluation.
+  optional double current_epoch = 1;
+
+  // Training time in seconds up to this point. Does not include evaluation
+  // time.
+  optional double training_time = 2;
+
+  // Accuracy on a fixed 10,000 images from the train set.
+  optional double train_accuracy = 3;
+
+  // Accuracy on a held-out validation set of 10,000 images.
+  optional double validation_accuracy = 4;
+
+  // Accuracy on the test set of 10,000 images.
+  optional double test_accuracy = 5;
+
+  // Location of checkpoint file. Note: checkpoint_path will look like
+  // /path/to/model_dir/model.ckpt-1234 but the actual checkpoint files may have
+  // an extra ".data", ".index", ".meta" suffix. For purposes of loading a
+  // checkpoint file in TensorFlow, the path without the suffix is sufficient.
+  // This field may be left blank because the checkpoint can be programmatically
+  // generated from the model specifications.
+  optional string checkpoint_path = 6;
+
+  // Additional sample metrics like gradient norms and covariance are too large
+  // to store in file, so they need to be queried along with the checkpoints
+  // from GCS directly.
+}
+
+
