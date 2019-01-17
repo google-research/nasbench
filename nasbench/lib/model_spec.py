@@ -67,16 +67,10 @@ class ModelSpec(object):
     self.original_matrix = copy.deepcopy(matrix)
     self.original_ops = copy.deepcopy(ops)
 
-    print('Received spec:\n%s\n%s' % (str(matrix), str(ops)))
     self.matrix = copy.deepcopy(matrix)
     self.ops = copy.deepcopy(ops)
     self.valid_spec = True
     self._prune()
-
-    if self.valid_spec:
-      print('Pruned spec:\n%s\n%s' % (str(self.matrix), str(self.ops)))
-    else:
-      print('Invalid spec')
 
     self.data_format = data_format
 

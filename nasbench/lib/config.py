@@ -83,7 +83,7 @@ flags.DEFINE_float(
 flags.DEFINE_float(
     'weight_decay', 1e-4, 'L2 regularization weight.')
 flags.DEFINE_integer(
-    'max_attempts', 2,
+    'max_attempts', 5,
     'Maximum number of times to try training and evaluating an individual'
     ' before aborting.')
 flags.DEFINE_list(

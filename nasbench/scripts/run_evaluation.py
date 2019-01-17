@@ -59,6 +59,11 @@ import tensorflow as tf
 
 flags.DEFINE_string('models_file', '',
                     'JSON file containing models.')
+flags.DEFINE_string('remainders_file', '',
+                    'JSON file containing list of remainders as tuples of'
+                    ' (module hash, repeat num). If provided, only the runs in'
+                    ' the list will be evaluated, otherwise, all models inside'
+                    ' models_file will be evaluated.')
 flags.DEFINE_string('model_id_regex', '^',
                     'Regex of models to train. Model IDs are MD5 hashes'
                     ' which match ([a-f0-9]{32}).')
@@ -104,14 +109,25 @@ class Evaluator(object):
     with tf.gfile.Open(models_file) as f:
       self.models = json.load(f)
 
-    # Filter keys to only those that fit the regex and order them so all workers
-    # see a canonical ordering.
-    regex = re.compile(model_id_regex)
-    evaluated_keys = [key for key in self.models.keys() if regex.match(key)]
-    self.ordered_keys = sorted(evaluated_keys)
-    self.num_models = len(self.ordered_keys)
+    self.remainders = None
+    self.ordered_keys = None
 
-    self.total_work_units = self.num_models * self.config['num_repeats']
+    if FLAGS.remainders_file:
+      # Run only the modules and repeat numbers specified
+      with tf.gfile.Open(FLAGS.remainders_file) as f:
+        self.remainders = json.load(f)
+      self.remainders = sorted(self.remainders)
+      self.num_models = len(self.remainders)
+      self.total_work_units = self.num_models
+    else:
+      # Filter keys to only those that fit the regex and order them so all
+      # workers see a canonical ordering.
+      regex = re.compile(model_id_regex)
+      evaluated_keys = [key for key in self.models.keys() if regex.match(key)]
+      self.ordered_keys = sorted(evaluated_keys)
+      self.num_models = len(self.ordered_keys)
+      self.total_work_units = self.num_models * self.config['num_repeats']
+
     self.total_workers = total_workers
 
     # If the worker is recovering from a restart, figure out where to restart
@@ -149,8 +165,14 @@ class Evaluator(object):
     Args:
       index: int index into total work units.
     """
-    model_id = self.ordered_keys[index % self.num_models]
-    model_repeat = index // self.num_models + 1
+    if self.remainders:
+      assert self.ordered_keys is None
+      model_id = self.remainders[index][0]
+      model_repeat = self.remainders[index][1]
+    else:
+      model_id = self.ordered_keys[index % self.num_models]
+      model_repeat = index // self.num_models + 1
+
     matrix, labels = self.models[model_id]
     matrix = np.array(matrix)
 
