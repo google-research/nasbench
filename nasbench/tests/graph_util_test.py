@@ -1,4 +1,4 @@
-# Copyright 2018 The Google Research Authors.
+# Copyright 2019 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -406,6 +406,44 @@ class GraphUtilTest(tf.test.TestCase):
       hash1 = graph_util.hash_module(matrix, labels)
       hash2 = graph_util.hash_module(pmatrix, plabels)
       self.assertEqual(hash1, hash2)
+
+  def test_counterexample_bipartite(self):
+    # This is a counter example that shows that the hashing algorithm is not
+    # perfectly identifiable (i.e. there are non-isomorphic graphs with the same
+    # hash). If this tests fails, it means the algorithm must have been changed
+    # in some way that allows it to identify these graphs as non-isomoprhic.
+    matrix1 = np.array(
+        [[0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
+         [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+         [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+    matrix2 = np.array(
+        [[0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 1, 1, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+         [0, 0, 0, 0, 0, 1, 0, 0, 1, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+    labels = [-1, 1, 1, 1, 1, 2, 2, 2, 2, -2]
+
+    # This takes far too long to run so commenting it out. The graphs are
+    # non-isomorphic fairly obviously from visual inspection.
+    # self.assertFalse(graph_util.is_isomorphic((matrix1, labels),
+    #                                           (matrix2, labels)))
+    self.assertEqual(graph_util.hash_module(matrix1, labels),
+                     graph_util.hash_module(matrix2, labels))
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-# Copyright 2018 The Google Research Authors.
+# Copyright 2019 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,12 +14,11 @@
 
 """User interface for the NAS Benchmark dataset.
 
-Before using this API, download the data at:
-  [data not yet available for download]
+Before using this API, download the data files from the links in the README.
 
 Usage:
   # Load the data from file (this will take some time)
-  dataset = api.NASBench('/path/to/nasbench.tfrecord')
+  nasbench = api.NASBench('/path/to/nasbench.tfrecord')
 
   # Create an Inception-like module (5x5 convolution replaced with two 3x3
   # convolutions).
@@ -37,7 +36,7 @@ Usage:
 
 
   # Query this model from dataset
-  data = dataset.query(model_spec)
+  data = nasbench.query(model_spec)
 
 Adjacency matrices are expected to be upper-triangular 0-1 matrices within the
 defined search space (7 vertices, 9 edges, 3 allowed ops). The first and last
@@ -60,12 +59,35 @@ The returned data object is a dictionary with the following keys:
   - train_accuracy: training accuracy
   - validation_accuracy: validation_accuracy
   - test_accuracy: testing accuracy
+
+Instead of querying the dataset for a single run of a model, it is also possible
+to retrieve all metrics for a given spec, using:
+
+  fixed_stats, computed_stats = nasbench.get_metrics_from_spec(model_spec)
+
+The fixed_stats is a dictionary with the keys:
+  - module_adjacency
+  - module_operations
+  - trainable_parameters
+
+The computed_stats is a dictionary from epoch count to a list of metric
+dicts. For example, computed_stats[108][0] contains the metrics for the first
+repeat of the provided model trained to 108 epochs. The available keys are:
+  - halfway_training_time
+  - halfway_train_accuracy
+  - halfway_validation_accuracy
+  - halfway_test_accuracy
+  - final_training_time
+  - final_train_accuracy
+  - final_validation_accuracy
+  - final_test_accuracy
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import base64
 import copy
 import json
 import os
@@ -76,7 +98,6 @@ from nasbench.lib import config
 from nasbench.lib import evaluate
 from nasbench.lib import model_metrics_pb2
 from nasbench.lib import model_spec as _model_spec
-from nasbench.scripts import run_evaluation
 import numpy as np
 import tensorflow as tf
 
@@ -101,63 +122,86 @@ class NASBench(object):
         with the same models in the same order. By default, the seed is randomly
         generated.
     """
-    # TODO(chrisying): download the file directly if dataset_file not provided
     self.config = config.build_config()
     random.seed(seed)
 
     print('Loading dataset from file... This may take a few minutes...')
     start = time.time()
-    self.dataset = {}
+
+    # Stores the fixed statistics that are independent of evaluation (i.e.,
+    # adjacency matrix, operations, and number of parameters).
+    # hash --> metric name --> scalar
+    self.fixed_statistics = {}
+
+    # Stores the statistics that are computed via training and evaluating the
+    # model on CIFAR-10. Statistics are computed for multiple repeats of each
+    # model at each max epoch length.
+    # hash --> epochs --> repeat index --> metric name --> scalar
+    self.computed_statistics = {}
+
+    # Valid queriable epoch lengths. {4, 12, 36, 108} for the full dataset or
+    # {108} for the smaller dataset with only the 108 epochs.
     self.valid_epochs = set()
+
     for serialized_row in tf.python_io.tf_record_iterator(dataset_file):
+      # Parse the data from the data file.
+      module_hash, epochs, raw_adjacency, raw_operations, raw_metrics = (
+          json.loads(serialized_row.decode('utf-8')))
+
+      dim = int(np.sqrt(len(raw_adjacency)))
+      adjacency = np.array([int(e) for e in list(raw_adjacency)], dtype=np.int8)
+      adjacency = np.reshape(adjacency, (dim, dim))
+      operations = raw_operations.split(',')
+      metrics = model_metrics_pb2.ModelMetrics.FromString(
+          base64.b64decode(raw_metrics))
+
+      if module_hash not in self.fixed_statistics:
+        # First time seeing this module, initialize fixed statistics.
+        new_entry = {}
+        new_entry['module_adjacency'] = adjacency
+        new_entry['module_operations'] = operations
+        new_entry['trainable_parameters'] = metrics.trainable_parameters
+        self.fixed_statistics[module_hash] = new_entry
+        self.computed_statistics[module_hash] = {}
+
+      self.valid_epochs.add(epochs)
+
+      if epochs not in self.computed_statistics[module_hash]:
+        self.computed_statistics[module_hash][epochs] = []
+
+      # Each data_point consists of the metrics recorded from a single
+      # train-and-evaluation of a model at a specific epoch length.
       data_point = {}
 
-      row = json.loads(serialized_row)
-      module_hash = row[0]
-      max_epochs = row[1]
-      self.valid_epochs.add(max_epochs)
-      metrics = model_metrics_pb2.ModelMetrics.FromString(
-          row[4].decode('base64'))
+      # Note: metrics.evaluation_data[0] contains the computed metrics at the
+      # start of training (step 0) but this is unused by this API.
 
-      # TODO(chrisying): is it useful to keep the original adjacency and
-      # operations actually evaluated? Leaving this commented out because it
-      # saves a lot of memory.
-      '''
-      module_adjacency = row[2]
-      module_operations = row[3]
-      adjacency = np.array(map(int, list(metrics['module_adjacency'])))
-      dim = int(math.sqrt(len(adjacency)))
-      assert dim * dim == len(adjacency)
-      data_point['module_adjacency'] = adjacency.reshape((dim, dim))
-      data_point['module_operations'] = metrics['module_operations'].split(',')
-      '''
-      data_point['trainable_parameters'] = metrics.trainable_parameters
-
+      # Evaluation statistics at the half-way point of training
       half_evaluation = metrics.evaluation_data[1]
-      final_evaluation = metrics.evaluation_data[2]
-      data_point['training_time'] = (half_evaluation.training_time,
-                                     final_evaluation.training_time)
-      data_point['train_accuracy'] = (half_evaluation.train_accuracy,
-                                      final_evaluation.train_accuracy)
-      data_point['validation_accuracy'] = (half_evaluation.validation_accuracy,
-                                           final_evaluation.validation_accuracy)
-      data_point['test_accuracy'] = (half_evaluation.test_accuracy,
-                                     final_evaluation.test_accuracy)
+      data_point['halfway_training_time'] = half_evaluation.training_time
+      data_point['halfway_train_accuracy'] = half_evaluation.train_accuracy
+      data_point['halfway_validation_accuracy'] = (
+          half_evaluation.validation_accuracy)
+      data_point['halfway_test_accuracy'] = half_evaluation.test_accuracy
 
-      key = (module_hash, max_epochs)
-      if key not in self.dataset:
-        self.dataset[key] = []
-      self.dataset[key].append(data_point)
+      # Evaluation statistics at the end of training
+      final_evaluation = metrics.evaluation_data[2]
+      data_point['final_training_time'] = final_evaluation.training_time
+      data_point['final_train_accuracy'] = final_evaluation.train_accuracy
+      data_point['final_validation_accuracy'] = (
+          final_evaluation.validation_accuracy)
+      data_point['final_test_accuracy'] = final_evaluation.test_accuracy
+
+      self.computed_statistics[module_hash][epochs].append(data_point)
 
     elapsed = time.time() - start
     print('Loaded dataset in %d seconds' % elapsed)
 
     self.history = {}
-    self.training_time_spent = 0
+    self.training_time_spent = 0.0
     self.total_epochs_spent = 0
-    # TODO(chrisying): add GCS readers for checkpoint data
 
-  def query(self, model_spec, num_epochs=108, stop_halfway=False):
+  def query(self, model_spec, epochs=108, stop_halfway=False):
     """Fetch one of the evaluations for this model spec.
 
     Each call will sample one of the config['num_repeats'] evaluations of the
@@ -170,14 +214,11 @@ class NASBench(object):
     This function also allows querying the evaluation metrics at the halfway
     point of training using stop_halfway. Using this option will increment the
     budget counters only up to the halfway point.
-    # TODO(chrisying): support "resume" training which gives only increments the
-    # budget by the second half of the cost. How should the dataset handle the
-    # case where the user queries the same halfway model multiple times?
 
     Args:
       model_spec: ModelSpec object.
-      num_epochs: number of epochs trained. Must be one of the evaluated number
-        of epochs, [4, 12, 36, 108] for the full dataset.
+      epochs: number of epochs trained. Must be one of the evaluated number of
+        epochs, [4, 12, 36, 108] for the full dataset.
       stop_halfway: if True, returned dict will only contain the training time
         and accuracies at the halfway point of training (num_epochs/2).
         Otherwise, returns the time and accuracies at the end of training
@@ -189,30 +230,35 @@ class NASBench(object):
     Raises:
       OutOfDomainError: if model_spec or num_epochs is outside the search space.
     """
-    self._check_spec(model_spec)
-    if num_epochs not in self.valid_epochs:
+    if epochs not in self.valid_epochs:
       raise OutOfDomainError('invalid number of epochs, must be one of %s'
                              % self.valid_epochs)
 
-    key = (model_spec.hash_spec(self.config['available_ops']), num_epochs)
+    fixed_stat, computed_stat = self.get_metrics_from_spec(model_spec)
     sampled_index = random.randint(0, self.config['num_repeats'] - 1)
-    data = copy.deepcopy(self.dataset[key][sampled_index])
+    computed_stat = computed_stat[epochs][sampled_index]
+
+    data = {}
+    data['module_adjacency'] = fixed_stat['module_adjacency']
+    data['module_operations'] = fixed_stat['module_operations']
+    data['trainable_parameters'] = fixed_stat['trainable_parameters']
+
     if stop_halfway:
-      data['training_time'] = data['training_time'][0]
-      data['train_accuracy'] = data['train_accuracy'][0]
-      data['validation_accuracy'] = data['validation_accuracy'][0]
-      data['test_accuracy'] = data['test_accuracy'][0]
+      data['training_time'] = computed_stat['halfway_training_time']
+      data['train_accuracy'] = computed_stat['halfway_train_accuracy']
+      data['validation_accuracy'] = computed_stat['halfway_validation_accuracy']
+      data['test_accuracy'] = computed_stat['halfway_test_accuracy']
     else:
-      data['training_time'] = data['training_time'][1]
-      data['train_accuracy'] = data['train_accuracy'][1]
-      data['validation_accuracy'] = data['validation_accuracy'][1]
-      data['test_accuracy'] = data['test_accuracy'][1]
+      data['training_time'] = computed_stat['final_training_time']
+      data['train_accuracy'] = computed_stat['final_train_accuracy']
+      data['validation_accuracy'] = computed_stat['final_validation_accuracy']
+      data['test_accuracy'] = computed_stat['final_test_accuracy']
 
     self.training_time_spent += data['training_time']
     if stop_halfway:
-      self.total_epochs_spent += num_epochs // 2
+      self.total_epochs_spent += epochs // 2
     else:
-      self.total_epochs_spent += num_epochs
+      self.total_epochs_spent += epochs
 
     return data
 
@@ -234,6 +280,15 @@ class NASBench(object):
       return False
 
     return True
+
+  def get_budget_counters(self):
+    """Returns the time and budget counters."""
+    return self.training_time_spent, self.total_epochs_spent
+
+  def reset_budget_counters(self):
+    """Reset the time and epoch budget counters."""
+    self.training_time_spent = 0.0
+    self.total_epochs_spent = 0
 
   def evaluate(self, model_spec, model_dir):
     """Trains and evaluates a model spec from scratch (does not query dataset).
@@ -259,9 +314,11 @@ class NASBench(object):
     metadata = evaluate.train_and_evaluate(model_spec, self.config, model_dir)
     metadata_file = os.path.join(model_dir, 'metadata.json')
     with tf.gfile.Open(metadata_file, 'w') as f:
-      json.dump(metadata, f, cls=run_evaluation.NumpyEncoder)
+      json.dump(metadata, f, cls=_NumpyEncoder)
 
     data_point = {}
+    data_point['module_adjacency'] = model_spec.matrix
+    data_point['module_operations'] = model_spec.ops
     data_point['trainable_parameters'] = metadata['trainable_params']
 
     final_evaluation = metadata['evaluation_results'][-1]
@@ -272,8 +329,28 @@ class NASBench(object):
 
     return data_point
 
-  def get_model_metrics(self, model_spec):
-    """Returns the computed metrics for all epochs and all repeats of a model.
+  def hash_iterator(self):
+    """Returns iterator over all unique model hashes."""
+    return self.fixed_statistics.keys()
+
+  def get_metrics_from_hash(self, module_hash):
+    """Returns the metrics for all epochs and all repeats of a hash.
+
+    This method is for dataset analysis and should not be used for benchmarking.
+    As such, it does not increment any of the budget counters.
+
+    Args:
+      module_hash: MD5 hash, i.e., the values yielded by hash_iterator().
+
+    Returns:
+      fixed stats and computed stats of the model spec provided.
+    """
+    fixed_stat = copy.deepcopy(self.fixed_statistics[module_hash])
+    computed_stat = copy.deepcopy(self.computed_statistics[module_hash])
+    return fixed_stat, computed_stat
+
+  def get_metrics_from_spec(self, model_spec):
+    """Returns the metrics for all epochs and all repeats of a model.
 
     This method is for dataset analysis and should not be used for benchmarking.
     As such, it does not increment any of the budget counters.
@@ -282,19 +359,11 @@ class NASBench(object):
       model_spec: ModelSpec object.
 
     Returns:
-      dict of number of epochs (one of [4, 12, 36, 108]) to a list of data
-      points, each data point is a dict of the same format as described in the
-      docstring. Note that training_time, train_accuracy, validation_accuracy,
-      test_accuracy are tuples, with the first element being the value at the
-      halfway point of training and the second at the end.
+      fixed stats and computed stats of the model spec provided.
     """
     self._check_spec(model_spec)
-    data = {}
-    for num_epochs in self.valid_epochs:
-      key = (model_spec.hash_spec(self.config['available_ops']), num_epochs)
-      data[num_epochs] = self.dataset[key]
-
-    return data
+    module_hash = self._hash_spec(model_spec)
+    return self.get_metrics_from_hash(module_hash)
 
   def _check_spec(self, model_spec):
     """Checks that the model spec is within the dataset."""
@@ -321,3 +390,19 @@ class NASBench(object):
         raise OutOfDomainError('unsupported op %s (available ops = %s)'
                                % (op, self.config['available_ops']))
 
+  def _hash_spec(self, model_spec):
+    """Returns the MD5 hash for a provided model_spec."""
+    return model_spec.hash_spec(self.config['available_ops'])
+
+
+class _NumpyEncoder(json.JSONEncoder):
+  """Converts numpy objects to JSON-serializable format."""
+
+  def default(self, obj):
+    if isinstance(obj, np.ndarray):
+      # Matrices converted to nested lists
+      return obj.tolist()
+    elif isinstance(obj, np.generic):
+      # Scalars converted to closest Python type
+      return np.asscalar(obj)
+    return json.JSONEncoder.default(self, obj)

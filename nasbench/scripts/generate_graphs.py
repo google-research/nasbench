@@ -1,4 +1,4 @@
-# Copyright 2018 The Google Research Authors.
+# Copyright 2019 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -103,7 +103,7 @@ def main(_):
 
       # Discard any graphs which can be pruned or exceed constraints
       if (not graph_util.is_full_dag(matrix) or
-          graph_util. num_edges(matrix) > FLAGS.max_edges):
+          graph_util.num_edges(matrix) > FLAGS.max_edges):
         continue
 
       # Iterate through all possible labelings

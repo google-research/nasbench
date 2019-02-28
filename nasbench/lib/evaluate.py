@@ -1,4 +1,4 @@
-# Copyright 2018 The Google Research Authors.
+# Copyright 2019 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -182,9 +182,7 @@ class _TrainAndEvaluator(object):
 
     now = time.time()
     sample_metrics = self._compute_sample_metrics()
-    elapsed = time.time() - now
-    tf.logging.info(sample_metrics)
-    tf.logging.info('predict time: %f' % elapsed)
+    predict_time = time.time() - now
 
     return {
         'epochs': epochs,
@@ -194,7 +192,7 @@ class _TrainAndEvaluator(object):
         'validation_accuracy': valid_accuracy,
         'test_accuracy': test_accuracy,
         'sample_metrics': sample_metrics,
-        'predict_time': elapsed,
+        'predict_time': predict_time,
     }
 
   def _compute_sample_metrics(self):
@@ -230,7 +228,10 @@ def _augment_and_evaluate_impl(spec, config, model_dir, epochs_per_eval=5):
 
   steps_per_epoch = input_augment.num_images / config['batch_size']   # float
   ckpt = tf.train.latest_checkpoint(model_dir)
-  current_step = int(ckpt.split('-')[-1])
+  if not ckpt:
+    current_step = 0
+  else:
+    current_step = int(ckpt.split('-')[-1])
   max_steps = int(config['train_epochs'] * steps_per_epoch)
 
   while current_step < max_steps:
@@ -261,7 +262,7 @@ def _create_estimator(spec, config, model_dir,
   # a very large value.
   run_config = tf.contrib.tpu.RunConfig(
       model_dir=model_dir,
-      keep_checkpoint_max=None,     # Keep all checkpoints
+      keep_checkpoint_max=3,    # Keeps ckpt at start, halfway, and end
       save_checkpoints_secs=2**30,
       tpu_config=tf.contrib.tpu.TPUConfig(
           iterations_per_loop=config['tpu_iterations_per_loop'],

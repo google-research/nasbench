@@ -1,4 +1,4 @@
-# Copyright 2018 The Google Research Authors.
+# Copyright 2019 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ def main(argv):
   del argv  # Unused
 
   # Load the data from file (this will take some time)
-  dataset = api.NASBench(NASBENCH_TFRECORD)
+  nasbench = api.NASBench(NASBENCH_TFRECORD)
 
   # Create an Inception-like module (5x5 convolution replaced with two 3x3
   # convolutions).
@@ -54,8 +54,33 @@ def main(argv):
 
   # Query this model from dataset, returns a dictionary containing the metrics
   # associated with this model.
-  data = dataset.query(model_spec)
+  print('Querying an Inception-like model.')
+  data = nasbench.query(model_spec)
   print(data)
+  print(nasbench.get_budget_counters())   # prints (total time, total epochs)
+
+  # Get all metrics (all epoch lengths, all repeats) associated with this
+  # model_spec. This should be used for dataset analysis and NOT for
+  # benchmarking algorithms (does not increment budget counters).
+  print('\nGetting all metrics for the same Inception-like model.')
+  fixed_metrics, computed_metrics = nasbench.get_metrics_from_spec(model_spec)
+  print(fixed_metrics)
+  for epochs in nasbench.valid_epochs:
+    for repeat_index in range(len(computed_metrics[epochs])):
+      data_point = computed_metrics[epochs][repeat_index]
+      print('Epochs trained %d, repeat number: %d' % (epochs, repeat_index + 1))
+      print(data_point)
+
+  # Iterate through unique models in the dataset. Models are unqiuely identified
+  # by a hash.
+  print('\nIterating over unique models in the dataset.')
+  for unique_hash in nasbench.hash_iterator():
+    fixed_metrics, computed_metrics = nasbench.get_metrics_from_hash(
+        unique_hash)
+    print(fixed_metrics)
+
+    # For demo purposes, break here instead of iterating through whole set.
+    break
 
 
 # If you are passing command line flags to modify the default config values, you

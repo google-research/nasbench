@@ -2,12 +2,65 @@
 
 This repository contains the code used for generating and interacting with the
 NASBench dataset. The dataset contains **423,624 unique neural networks**
-exhaustively generated and evaluated from a fixed graph-based search space. More
-information about the search space will be presented in our upcoming paper.
+exhaustively generated and evaluated from a fixed graph-based search space.
 
-Each network is trained and evaluated multiple times on CIFAR-10 and we present
-the metrics in a queriable API. The current release contains over **1.27
-million** trained and evaluated models.
+Each network is trained and evaluated multiple times on CIFAR-10 at various
+training budgets and we present the metrics in a queriable API. The current
+release contains over **5 million** trained and evaluated models.
+
+Our paper can be found at:
+
+[NAS-Bench-101: Towards Reproducible Neural Architecture
+Search](https://arxiv.org/abs/1902.09635)
+
+If you use this dataset, please cite:
+
+```
+@ARTICLE{ying2019nasbench,
+       author = {{Ying}, Chris and {Klein}, Aaron and {Real}, Esteban and
+         {Christiansen}, Eric and {Murphy}, Kevin and {Hutter}, Frank},
+        title = "{NAS-Bench-101: Towards Reproducible Neural Architecture Search}",
+      journal = {arXiv e-prints},
+         year = "2019",
+        month = "Feb",
+        eid = {arXiv:1902.09635}
+}
+```
+
+## Dataset overview
+
+NASBench is a tabular dataset which maps convolutional neural network
+architectures to their trained and evaluated performance on CIFAR-10.
+Specifically, all networks share the same network "skeleton", which can be seen
+in Figure (a) below. What changes between different models is the "module", which is a
+collection of neural network operations linked in an arbitrary graph-like
+structure.
+
+Modules are represented by directed acyclic graphs with up to 9 vertices and 7
+edges. The valid operations at each vertex are "3x3 convolution", "1x1
+convolution", and "3x3 max-pooling". Figure (b) below shows an Inception-like
+cell within the dataset. Figure (c) shows a high-level overview of how the
+interior filter counts of each module are computed.
+
+<img src="images/architecture.png" width="600">
+
+There are exactly 423,624 computationally unique modules within this search
+space and each one has been trained for 4, 12, 36, and 108 epochs three times
+each (423K * 3 * 4 = ~5M total trained models). We report the following metrics:
+
+* training accuracy
+* validation accuracy
+* testing accuracy
+* number of parameters
+* training time
+
+The scatterplot below shows a comparison of number of parameters, training time,
+and mean validation accuracy of models trained for 108 epochs in the dataset.
+
+<img src="images/param_time_acc.png" width="400">
+
+See our paper for more detailed information about the design of this search
+space, further implementation details, and more in-depth analysis.
 
 ## Setup
 
@@ -37,8 +90,20 @@ options, see https://www.tensorflow.org/install/.
 
 ## Download the dataset
 
-**This project is currently still work-in-progress and the dataset is not yet
-available for download.**
+The full dataset (which includes all 5M data points at all 4 epoch lengths):
+
+https://storage.googleapis.com/nasbench/nasbench_full.tfrecord
+
+Size: ~1.95 GB, SHA256: `3d64db8180fb1b0207212f9032205064312b6907a3bbc81eabea10db2f5c7e9c`
+
+---
+
+Subset of the dataset with only models trained at 108 epochs:
+
+https://storage.googleapis.com/nasbench/nasbench_only108.tfrecord
+
+Size: ~499 MB, SHA256: `4c39c3936e36a85269881d659e44e61a245babcb72cb374eacacf75d0e5f4fd1`
+
 
 ## Using the dataset
 
@@ -46,7 +111,7 @@ Example usage (see `example.py` for a full runnable example):
 
 ```python
 # Load the data from file (this will take some time)
-dataset = api.NASBench('/path/to/nasbench.tfrecord')
+nasbench = api.NASBench('/path/to/nasbench.tfrecord')
 
 # Create an Inception-like module (5x5 convolution replaced with two 3x3
 # convolutions).
@@ -64,11 +129,15 @@ model_spec = api.ModelSpec(
 
 # Query this model from dataset, returns a dictionary containing the metrics
 # associated with this model.
-data = dataset.query(model_spec)
+data = nasbench.query(model_spec)
 ```
 
 See `nasbench/api.py` for more information, including the constraints on valid
 module matrices and operations.
+
+**Note**: it is not required to use `nasbench/api.py` to work with this dataset,
+you can see how to parse the dataset files from the initializer inside
+`nasbench/api.py` and then interact the data however you'd like.
 
 ## How the dataset was generated
 

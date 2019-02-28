@@ -1,4 +1,4 @@
-# Copyright 2018 The Google Research Authors.
+# Copyright 2019 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,15 +42,11 @@ def create_resnet20_spec(config):
     ModelSpec object.
   """
   spec = model_spec.ModelSpec(
-      np.array([[0, 1, 0, 0, 0, 0, 1],
-                [0, 0, 1, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 1],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0]]),
-      ['', 'conv3x3-bn-relu', 'conv3x3-bn-relu',
-       '', '', '', ''])
+      np.array([[0, 1, 0, 1],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1],
+                [0, 0, 0, 0]]),
+      ['input', 'conv3x3-bn-relu', 'conv3x3-bn-relu', 'output'])
   config['num_stacks'] = 3
   config['num_modules_per_stack'] = 3
   config['stem_filter_size'] = 16
@@ -71,14 +67,10 @@ def create_resnet50_spec(config):
     ModelSpec object.
   """
   spec = model_spec.ModelSpec(
-      np.array([[0, 1, 0, 0, 0, 0, 1],
-                [0, 0, 0, 0, 0, 0, 1],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0]]),
-      ['', 'bottleneck3x3', '', '', '', '', ''])
+      np.array([[0, 1, 1],
+                [0, 0, 1],
+                [0, 0, 0]]),
+      ['input', 'bottleneck3x3', 'output'])
   config['num_stacks'] = 3
   config['num_modules_per_stack'] = 6
   config['stem_filter_size'] = 128
@@ -107,8 +99,33 @@ def create_inception_resnet_spec(config):
                 [0, 0, 0, 0, 0, 0, 1],
                 [0, 0, 0, 0, 0, 0, 1],
                 [0, 0, 0, 0, 0, 0, 0]]),
-      ['', 'conv1x1-bn-relu', 'conv3x3-bn-relu', 'conv3x3-bn-relu',
-       'conv3x3-bn-relu', 'maxpool3x3', ''])
+      ['input', 'conv1x1-bn-relu', 'conv3x3-bn-relu', 'conv3x3-bn-relu',
+       'conv3x3-bn-relu', 'maxpool3x3', 'output'])
+  config['num_stacks'] = 3
+  config['num_modules_per_stack'] = 3
+  config['stem_filter_size'] = 128
+  return spec
+
+
+def create_best_nasbench_spec(config):
+  """Construct the best spec in the NASBench dataset w.r.t. mean test accuracy.
+
+  Args:
+    config: config dict created by config.py.
+
+  Returns:
+    ModelSpec object.
+  """
+  spec = model_spec.ModelSpec(
+      np.array([[0, 1, 1, 0, 0, 1, 1],
+                [0, 0, 0, 0, 0, 1, 0],
+                [0, 0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 0, 0, 1, 0],
+                [0, 0, 0, 0, 0, 0, 1],
+                [0, 0, 0, 0, 0, 0, 0]]),
+      ['input', 'conv1x1-bn-relu', 'conv3x3-bn-relu', 'maxpool3x3',
+       'conv3x3-bn-relu', 'conv3x3-bn-relu', 'output'])
   config['num_stacks'] = 3
   config['num_modules_per_stack'] = 3
   config['stem_filter_size'] = 128
@@ -124,7 +141,7 @@ def main(_):
   config['train_epochs'] = 200
   config['lr_decay_method'] = 'STEPWISE'
   config['train_seconds'] = -1      # Disable training time limit
-  spec = create_resnet20_spec(config)
+  spec = create_best_nasbench_spec(config)
 
   data = evaluate.augment_and_evaluate(spec, config, FLAGS.model_dir)
   tf.logging.info(data)
