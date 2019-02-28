@@ -1,4 +1,4 @@
-# Copyright 2018 The Google Research Authors.
+# Copyright 2019 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -108,8 +108,8 @@ def hash_module(matrix, labeling):
   out_edges = np.sum(matrix, axis=1).tolist()
 
   assert len(in_edges) == len(out_edges) == len(labeling)
-  hashes = zip(out_edges, in_edges, labeling)
-  hashes = [hashlib.md5(str(h)).hexdigest() for h in hashes]
+  hashes = list(zip(out_edges, in_edges, labeling))
+  hashes = [hashlib.md5(str(h).encode('utf-8')).hexdigest() for h in hashes]
   # Computing this up to the diameter is probably sufficient but since the
   # operation is fast, it is okay to repeat more times.
   for _ in range(vertices):
@@ -118,11 +118,11 @@ def hash_module(matrix, labeling):
       in_neighbors = [hashes[w] for w in range(vertices) if matrix[w, v]]
       out_neighbors = [hashes[w] for w in range(vertices) if matrix[v, w]]
       new_hashes.append(hashlib.md5(
-          ''.join(sorted(in_neighbors)) + '|' +
-          ''.join(sorted(out_neighbors)) + '|' +
-          hashes[v]).hexdigest())
+          (''.join(sorted(in_neighbors)) + '|' +
+           ''.join(sorted(out_neighbors)) + '|' +
+           hashes[v]).encode('utf-8')).hexdigest())
     hashes = new_hashes
-  fingerprint = hashlib.md5(str(sorted(hashes))).hexdigest()
+  fingerprint = hashlib.md5(str(sorted(hashes)).encode('utf-8')).hexdigest()
 
   return fingerprint
 
