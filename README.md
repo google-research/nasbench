@@ -42,7 +42,7 @@ convolution", and "3x3 max-pooling". Figure (b) below shows an Inception-like
 cell within the dataset. Figure (c) shows a high-level overview of how the
 interior filter counts of each module are computed.
 
-<img src="images/architecture.png" width="600">
+<img src="images/architecture.png" width="400">
 
 There are exactly 423,624 computationally unique modules within this search
 space and each one has been trained for 4, 12, 36, and 108 epochs three times
@@ -57,7 +57,7 @@ each (423K * 3 * 4 = ~5M total trained models). We report the following metrics:
 The scatterplot below shows a comparison of number of parameters, training time,
 and mean validation accuracy of models trained for 108 epochs in the dataset.
 
-<img src="images/param_time_acc.png" width="400">
+<img src="images/param_time_acc.png" width="500">
 
 See our paper for more detailed information about the design of this search
 space, further implementation details, and more in-depth analysis.
