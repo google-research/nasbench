@@ -1,4 +1,4 @@
-# Copyright 2018 The Google Research Authors.
+# Copyright 2019 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -264,33 +264,31 @@ def build_module(spec, inputs, channels, is_training):
 
   final_concat_in = []
   for t in range(1, num_vertices - 1):
+    with tf.variable_scope('vertex_{}'.format(t)):
+      # Create interior connections, truncating if necessary
+      add_in = [truncate(tensors[src], vertex_channels[t], spec.data_format)
+                for src in range(1, t) if spec.matrix[src, t]]
 
-    # Create interior connections, truncating if necessary
-    add_in = [truncate(tensors[src], vertex_channels[t], spec.data_format)
-              for src in range(1, t) if spec.matrix[src, t]]
-
-    # Create add connection from projected input
-    if spec.matrix[0, t]:
-      with tf.variable_scope('vertex_{}'.format(t)):
+      # Create add connection from projected input
+      if spec.matrix[0, t]:
         add_in.append(projection(
             tensors[0],
             vertex_channels[t],
             is_training,
             spec.data_format))
 
-    if len(add_in) == 1:
-      vertex_input = add_in[0]
-    else:
-      vertex_input = tf.add_n(add_in)
+      if len(add_in) == 1:
+        vertex_input = add_in[0]
+      else:
+        vertex_input = tf.add_n(add_in)
 
-    # Perform op at vertex t
-    op = base_ops.OP_MAP[spec.ops[t]](
-        is_training=is_training,
-        data_format=spec.data_format)
-    with tf.variable_scope('vertex_{}'.format(t)):
+      # Perform op at vertex t
+      op = base_ops.OP_MAP[spec.ops[t]](
+          is_training=is_training,
+          data_format=spec.data_format)
       vertex_value = op.build(vertex_input, vertex_channels[t])
-    tensors.append(vertex_value)
 
+    tensors.append(vertex_value)
     if spec.matrix[t, num_vertices - 1]:
       final_concat_in.append(tensors[t])
 
