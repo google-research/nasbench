@@ -62,6 +62,13 @@ and mean validation accuracy of models trained for 108 epochs in the dataset.
 See our paper for more detailed information about the design of this search
 space, further implementation details, and more in-depth analysis.
 
+## Colab
+
+You can directly use this dataset from Google Colaboratory without needing to
+install anything on your local machine. Click "Open in Colab" below:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google-research/nasbench/blob/master/NASBench.ipynb)
+
 ## Setup
 
 1.  Clone this repo.
