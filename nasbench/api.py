@@ -55,7 +55,7 @@ The returned data object is a dictionary with the following keys:
   - module_adjacency: numpy array for the adjacency matrix
   - module_operations: list of operation labels
   - trainable_parameters: number of trainable parameters in the model
-  - training_time: the total training time up to this point
+  - training_time: the total training time in seconds up to this point
   - train_accuracy: training accuracy
   - validation_accuracy: validation_accuracy
   - test_accuracy: testing accuracy

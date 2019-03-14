@@ -98,12 +98,19 @@ def build_model_fn(spec, config, num_train_images):
         inputs=net,
         units=config['num_labels'])
 
-    loss = tf.losses.softmax_cross_entropy(
-        onehot_labels=tf.one_hot(labels, config['num_labels']),
-        logits=logits)
+    if mode == tf.estimator.ModeKeys.PREDICT and not config['use_tpu']:
+      # It is a known limitation of Estimator that the labels
+      # are not passed during PREDICT mode when running on CPU/GPU
+      # (https://github.com/tensorflow/tensorflow/issues/17824), thus we cannot
+      # compute the loss or anything dependent on it (i.e., the gradients).
+      loss = tf.constant(0.0)
+    else:
+      loss = tf.losses.softmax_cross_entropy(
+          onehot_labels=tf.one_hot(labels, config['num_labels']),
+          logits=logits)
 
-    loss += config['weight_decay'] * tf.add_n(
-        [tf.nn.l2_loss(v) for v in tf.trainable_variables()])
+      loss += config['weight_decay'] * tf.add_n(
+          [tf.nn.l2_loss(v) for v in tf.trainable_variables()])
 
     # Use inference mode to compute some useful metrics on a fixed sample
     # Due to the batch being sharded on TPU, these metrics should be run on CPU
@@ -127,12 +134,20 @@ def build_model_fn(spec, config, num_train_images):
 
       grads = tf.gradients(loss, all_params_tensors)
 
-      param_gradient_norms = {
-          name: tf.expand_dims(tf.norm(grad, ord=2), 0)
-          for name, grad in zip(all_params_names, grads)[:-1]
-      }
-      input_grad_norm = tf.sqrt(tf.reduce_sum(
-          tf.square(grads[-1]), axis=[1, 2, 3]))
+      param_gradient_norms = {}
+      for name, grad in zip(all_params_names, grads)[:-1]:
+        if grad is not None:
+          param_gradient_norms[name] = (
+              tf.expand_dims(tf.norm(grad, ord=2), 0))
+        else:
+          param_gradient_norms[name] = (
+              tf.expand_dims(tf.constant(0.0), 0))
+
+      if grads[-1] is not None:
+        input_grad_norm = tf.sqrt(tf.reduce_sum(
+            tf.square(grads[-1]), axis=[1, 2, 3]))
+      else:
+        input_grad_norm = tf.expand_dims(tf.constant(0.0), 0)
 
       covariance_matrices = {
           'cov_matrix_%d' % i:
