@@ -271,7 +271,7 @@ def _create_estimator(spec, config, model_dir,
   # This is a hack to allow PREDICT on a fixed batch on TPU. By replicating the
   # batch by the number of shards, this ensures each TPU core operates on the
   # entire fixed batch.
-  if num_sample_images:
+  if num_sample_images and config['use_tpu']:
     num_sample_images *= config['tpu_num_shards']
 
   estimator = tf.contrib.tpu.TPUEstimator(
