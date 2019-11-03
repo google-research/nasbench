@@ -20,7 +20,7 @@ If you use this dataset, please cite:
          author = {{Ying}, Chris and {Klein}, Aaron and {Real}, Esteban and
                   {Christiansen}, Eric and {Murphy}, Kevin and {Hutter}, Frank},
          title = "{NAS-Bench-101: Towards Reproducible Neural Architecture Search}",
-         journal = {arXiv e-prints},
+         journal = {Proceedings of the 36th International Conference on Machine Learning},
          year = "2019",
          month = "Feb",
          eid = {arXiv:1902.09635}
