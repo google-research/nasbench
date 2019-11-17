@@ -16,15 +16,19 @@ Search](https://arxiv.org/abs/1902.09635)
 If you use this dataset, please cite:
 
 ```
-@ARTICLE{ying2019nasbench,
-         author = {{Ying}, Chris and {Klein}, Aaron and {Real}, Esteban and
-                  {Christiansen}, Eric and {Murphy}, Kevin and {Hutter}, Frank},
-         title = "{NAS-Bench-101: Towards Reproducible Neural Architecture Search}",
-         journal = {arXiv e-prints},
-         year = "2019",
-         month = "Feb",
-         eid = {arXiv:1902.09635}
-}
+@InProceedings{pmlr-v97-ying19a,
+    title =     {{NAS}-Bench-101: Towards Reproducible Neural Architecture Search},
+    author =    {Ying, Chris and Klein, Aaron and Christiansen, Eric and Real, Esteban and Murphy, Kevin and Hutter, Frank},
+    booktitle = {Proceedings of the 36th International Conference on Machine Learning},
+    pages =     {7105--7114},
+    year =      {2019},
+    editor =    {Chaudhuri, Kamalika and Salakhutdinov, Ruslan},
+    volume =    {97},
+    series =    {Proceedings of Machine Learning Research},
+    address =   {Long Beach, California, USA},
+    month =     {09--15 Jun},
+    publisher = {PMLR},
+    url =       {http://proceedings.mlr.press/v97/ying19a.html},
 ```
 
 ## Dataset overview
