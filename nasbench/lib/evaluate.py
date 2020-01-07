@@ -122,7 +122,7 @@ class _TrainAndEvaluator(object):
         else:
           timing = training_time.limit(None)
 
-        evaluations = map(float, self.config['intermediate_evaluations'])
+        evaluations = list(map(float, self.config['intermediate_evaluations']))
         if not evaluations or evaluations[-1] != 1.0:
           evaluations.append(1.0)
         assert evaluations == sorted(evaluations)
@@ -197,8 +197,8 @@ class _TrainAndEvaluator(object):
 
   def _compute_sample_metrics(self):
     """Computes the metrics on a fixed batch."""
-    sample_metrics = self.estimator.predict(
-        input_fn=self.input_sample.input_fn, yield_single_examples=False).next()
+    sample_metrics = next(self.estimator.predict(
+        input_fn=self.input_sample.input_fn, yield_single_examples=False))
 
     # Fix the extra batch dimension added by PREDICT
     for metric in sample_metrics:

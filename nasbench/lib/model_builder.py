@@ -135,7 +135,7 @@ def build_model_fn(spec, config, num_train_images):
       grads = tf.gradients(loss, all_params_tensors)
 
       param_gradient_norms = {}
-      for name, grad in zip(all_params_names, grads)[:-1]:
+      for name, grad in list(zip(all_params_names, grads))[:-1]:
         if grad is not None:
           param_gradient_norms[name] = (
               tf.expand_dims(tf.norm(grad, ord=2), 0))
