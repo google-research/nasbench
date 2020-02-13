@@ -375,7 +375,7 @@ class NASBench(object):
 
     if num_vertices > self.config['module_vertices']:
       raise OutOfDomainError('too many vertices, got %d (max vertices = %d)'
-                             % (num_vertices, config['module_vertices']))
+                             % (num_vertices, self.config['module_vertices']))
 
     if num_edges > self.config['max_edges']:
       raise OutOfDomainError('too many edges, got %d (max edges = %d)'
