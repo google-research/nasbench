@@ -27,7 +27,7 @@ import numpy as np
 import tensorflow as tf
 
 VALID_EXCEPTIONS = (
-    tf.train.NanLossDuringTrainingError,  # NaN loss
+    tf.compat.v1.train.NanLossDuringTrainingError,  # NaN loss
     tf.errors.ResourceExhaustedError,     # OOM
     tf.errors.InvalidArgumentError,       # NaN gradient
     tf.errors.DeadlineExceededError,      # Timed out
@@ -227,7 +227,7 @@ def _augment_and_evaluate_impl(spec, config, model_dir, epochs_per_eval=5):
     timing = training_time.limit(None)
 
   steps_per_epoch = input_augment.num_images / config['batch_size']   # float
-  ckpt = tf.train.latest_checkpoint(model_dir)
+  ckpt = tf.compat.v1.train.latest_checkpoint(model_dir)
   if not ckpt:
     current_step = 0
   else:
@@ -299,13 +299,13 @@ def _evaluate(estimator, input_data, config, name=None):
 def _get_param_count(model_dir):
   """Get trainable param count from the model directory."""
   tf.reset_default_graph()
-  checkpoint = tf.train.get_checkpoint_state(model_dir)
+  checkpoint = tf.compat.v1.train.get_checkpoint_state(model_dir)
   with tf.Session() as sess:
-    saver = tf.train.import_meta_graph(
+    saver = tf.compat.v1.train.import_meta_graph(
         checkpoint.model_checkpoint_path + '.meta')
     saver.restore(sess, checkpoint.model_checkpoint_path)
     params = np.sum([np.prod(v.get_shape().as_list())
-                     for v in tf.trainable_variables()])
+                     for v in tf.compat.v1.trainable_variables()])
 
   return params
 

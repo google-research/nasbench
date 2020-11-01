@@ -80,7 +80,7 @@ def read_pickle_from_file(filename):
 def convert_to_tfrecord(input_file, output_file):
   """Converts a file to TFRecords."""
   print('Generating %s' % output_file)
-  with tf.python_io.TFRecordWriter(output_file) as record_writer:
+  with tf.compat.v1.python_io.TFRecordWriter(output_file) as record_writer:
     data_dict = read_pickle_from_file(input_file)
     data = data_dict[b'data']
     labels = data_dict[b'labels']
@@ -134,7 +134,7 @@ def main(data_dir):
 
   output_file = os.path.join(data_dir, 'sample.tfrecords')
   print('Generating %s' % output_file)
-  with tf.python_io.TFRecordWriter(output_file) as record_writer:
+  with tf.compat.v1.python_io.TFRecordWriter(output_file) as record_writer:
     for label_images in images:
       for example in label_images:
         record_writer.write(example.SerializeToString())
