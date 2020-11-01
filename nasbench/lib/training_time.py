@@ -126,8 +126,8 @@ _TimingVars = collections.namedtuple(  # pylint: disable=g-bad-name
         'total_time',
     ])
 
-
-class _TimingRunHook(tf.train.SessionRunHook):
+#class _TimingRunHook(tf.train.SessionRunHook):
+class _TimingRunHook(tf.compat.v1.train.SessionRunHook):
   """Hook to stop the training after a certain amount of time."""
 
   def __init__(self, max_train_secs=None):
@@ -163,7 +163,8 @@ class _TimingRunHook(tf.train.SessionRunHook):
           _internal_time_to_seconds(self._end_op - self._start_op))
 
   def before_run(self, run_context):
-    return tf.train.SessionRunArgs([self._total_op, self._step_op])
+    #return tf.train.SessionRunArgs([self._total_op, self._step_op])
+    return tf.compat.v1.train.SessionRunArgs([self._total_op, self._step_op])
 
   def after_run(self, run_context, run_values):
     total_time, _ = run_values.results
@@ -171,7 +172,8 @@ class _TimingRunHook(tf.train.SessionRunHook):
       run_context.request_stop()
 
 
-class _TimingSaverListener(tf.train.CheckpointSaverListener):
+#class _TimingSaverListener(tf.train.CheckpointSaverListener):
+class _TimingSaverListener(tf.compat.v1.train.CheckpointSaverListener):
   """Saving listener to store the train time up to the last checkpoint save."""
 
   def begin(self):
