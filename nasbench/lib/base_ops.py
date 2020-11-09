@@ -20,7 +20,10 @@ from __future__ import print_function
 
 import abc
 
-import tensorflow as tf
+# import tensorflow as tf
+
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 # Currently, only channels_last is well supported.
 VALID_DATA_FORMATS = frozenset(['channels_last', 'channels_first'])
