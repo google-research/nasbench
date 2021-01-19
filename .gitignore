@@ -1,3 +1,7 @@
 venv/
 nasbench.egg-info/
 *.pyc
+
+# Data files
+nasbench_only108.tfrecord
+nasbench_full.tfrecord 
