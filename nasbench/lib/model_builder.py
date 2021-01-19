@@ -30,7 +30,6 @@ from __future__ import print_function
 from nasbench.lib import base_ops
 from nasbench.lib import training_time
 import numpy as np
-# import tensorflow as tf
 import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior()
 
