@@ -24,7 +24,8 @@ from nasbench.lib import cifar
 from nasbench.lib import model_builder
 from nasbench.lib import training_time
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 VALID_EXCEPTIONS = (
     tf.train.NanLossDuringTrainingError,  # NaN loss

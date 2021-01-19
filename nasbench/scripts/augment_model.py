@@ -22,7 +22,8 @@ from nasbench.lib import config as _config
 from nasbench.lib import evaluate
 from nasbench.lib import model_spec
 import numpy as np
-import tensorflow as tf     # Used for app, flags, logging
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 tf.flags.DEFINE_string('model_dir', '', 'model directory')
 FLAGS = tf.flags.FLAGS
