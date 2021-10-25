@@ -149,18 +149,16 @@ class NASBench(object):
       module_hash, epochs, raw_adjacency, raw_operations, raw_metrics = (
           json.loads(serialized_row.decode('utf-8')))
 
-      dim = int(np.sqrt(len(raw_adjacency)))
-      adjacency = np.array([int(e) for e in list(raw_adjacency)], dtype=np.int8)
-      adjacency = np.reshape(adjacency, (dim, dim))
-      operations = raw_operations.split(',')
       metrics = model_metrics_pb2.ModelMetrics.FromString(
           base64.b64decode(raw_metrics))
 
       if module_hash not in self.fixed_statistics:
         # First time seeing this module, initialize fixed statistics.
+        dim = int(np.sqrt(len(raw_adjacency)))
         new_entry = {}
-        new_entry['module_adjacency'] = adjacency
-        new_entry['module_operations'] = operations
+        adjacency = np.array([raw_adjacency[i] == '1' for i in range(len(raw_adjacency))], dtype=np.int8)
+        new_entry['module_adjacency'] = adjacency.reshape(dim, dim)
+        new_entry['module_operations'] = raw_operations.split(',')
         new_entry['trainable_parameters'] = metrics.trainable_parameters
         self.fixed_statistics[module_hash] = new_entry
         self.computed_statistics[module_hash] = {}
