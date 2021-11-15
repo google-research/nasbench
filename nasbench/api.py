@@ -91,6 +91,7 @@ import pybase64
 import copy
 import json
 import os
+import pickle
 import random
 import time
 import ujson
@@ -109,6 +110,56 @@ ModelSpec = _model_spec.ModelSpec
 
 class OutOfDomainError(Exception):
   """Indicates that the requested graph is outside of the search domain."""
+
+
+def load_from_tf_record(dataset_file, is_full_data, ops_dict):
+  fixed_statistics, computed_statistics = {}, {}
+  valid_epochs = [4, 12, 36, 108] if is_full_data else [108]
+  size2sqrt = {size ** 2: size for size in range(1, 8)}
+
+  for serialized_row in tf.python_io.tf_record_iterator(dataset_file):
+    # Parse the data from the data file.
+    module_hash, epochs, raw_adjacency, raw_operations, raw_metrics = (
+        ujson.loads(serialized_row.decode('utf-8')))
+
+    metrics = model_metrics_pb2.ModelMetrics.FromString(
+        pybase64.b64decode(raw_metrics))
+
+    if module_hash not in fixed_statistics:
+      # First time seeing this module, initialize fixed statistics.
+      dim = size2sqrt[len(raw_adjacency)]
+      new_entry = {}
+      adjacency = np.fromiter(raw_adjacency, dtype=np.int8)
+      new_entry['module_adjacency'] = adjacency.reshape(dim, dim)
+      new_entry['module_operations'] = ops_dict[raw_operations]
+      new_entry['trainable_parameters'] = metrics.trainable_parameters
+      fixed_statistics[module_hash] = new_entry
+      computed_statistics[module_hash] = {e: [] for e in valid_epochs}
+
+    # Each data_point consists of the metrics recorded from a single
+    # train-and-evaluation of a model at a specific epoch length.
+    data_point = {}
+
+    # Note: metrics.evaluation_data[0] contains the computed metrics at the
+    # start of training (step 0) but this is unused by this API.
+
+    # Evaluation statistics at the half-way point of training
+    half_evaluation = metrics.evaluation_data[1]
+    data_point['halfway_training_time'] = half_evaluation.training_time
+    data_point['halfway_train_accuracy'] = half_evaluation.train_accuracy
+    data_point['halfway_validation_accuracy'] = half_evaluation.validation_accuracy
+    data_point['halfway_test_accuracy'] = half_evaluation.test_accuracy
+
+    # Evaluation statistics at the end of training
+    final_evaluation = metrics.evaluation_data[2]
+    data_point['final_training_time'] = final_evaluation.training_time
+    data_point['final_train_accuracy'] = final_evaluation.train_accuracy
+    data_point['final_validation_accuracy'] = final_evaluation.validation_accuracy
+    data_point['final_test_accuracy'] = final_evaluation.test_accuracy
+
+    computed_statistics[module_hash][epochs].append(data_point)
+
+  return computed_statistics, fixed_statistics
 
 
 class NASBench(object):
@@ -152,50 +203,29 @@ class NASBench(object):
     # {108} for the smaller dataset with only the 108 epochs.
     valid_epochs = [4, 12, 36, 108] if is_full_data else [108]
     self.valid_epochs = set(valid_epochs)
-    size2sqrt = {size ** 2: size for size in range(1, 8)}
-    ops_dict = self._get_ops_dict()
 
-    for serialized_row in tf.python_io.tf_record_iterator(dataset_file):
-      # Parse the data from the data file.
-      module_hash, epochs, raw_adjacency, raw_operations, raw_metrics = (
-          ujson.loads(serialized_row.decode('utf-8')))
+    pkl_file = f"{dataset_file.split('.tfrecord')[0]}.pkl"
+    if os.path.exists(pkl_file):
+      with open(pkl_file, 'rb') as f:
+        statistics = pickle.load(f)
+        self.fixed_statistics = statistics['static_info']
+        self.computed_statistics = statistics['non_static_info']
+      if len(self.fixed_statistics) != 423624:
+        raise ValueError(f'Pickle file is invalid. Try `rm {pkl_file}` and run again.')
+    else:
+      ops_dict = self._get_ops_dict()
+      self.computed_statistics, self.fixed_statistics = load_from_tf_record(
+        dataset_file,
+        is_full_data,
+        ops_dict
+      )
 
-      metrics = model_metrics_pb2.ModelMetrics.FromString(
-          pybase64.b64decode(raw_metrics))
-
-      if module_hash not in self.fixed_statistics:
-        # First time seeing this module, initialize fixed statistics.
-        dim = size2sqrt[len(raw_adjacency)]
-        new_entry = {}
-        adjacency = np.fromiter(raw_adjacency, dtype=np.int8)
-        new_entry['module_adjacency'] = adjacency.reshape(dim, dim)
-        new_entry['module_operations'] = ops_dict[raw_operations]
-        new_entry['trainable_parameters'] = metrics.trainable_parameters
-        self.fixed_statistics[module_hash] = new_entry
-        self.computed_statistics[module_hash] = {e: [] for e in valid_epochs}
-
-      # Each data_point consists of the metrics recorded from a single
-      # train-and-evaluation of a model at a specific epoch length.
-      data_point = {}
-
-      # Note: metrics.evaluation_data[0] contains the computed metrics at the
-      # start of training (step 0) but this is unused by this API.
-
-      # Evaluation statistics at the half-way point of training
-      half_evaluation = metrics.evaluation_data[1]
-      data_point['halfway_training_time'] = half_evaluation.training_time
-      data_point['halfway_train_accuracy'] = half_evaluation.train_accuracy
-      data_point['halfway_validation_accuracy'] = half_evaluation.validation_accuracy
-      data_point['halfway_test_accuracy'] = half_evaluation.test_accuracy
-
-      # Evaluation statistics at the end of training
-      final_evaluation = metrics.evaluation_data[2]
-      data_point['final_training_time'] = final_evaluation.training_time
-      data_point['final_train_accuracy'] = final_evaluation.train_accuracy
-      data_point['final_validation_accuracy'] = final_evaluation.validation_accuracy
-      data_point['final_test_accuracy'] = final_evaluation.test_accuracy
-
-      self.computed_statistics[module_hash][epochs].append(data_point)
+      with open(pkl_file, 'wb') as f:
+        info = {
+          'non_static_info': self.computed_statistics,
+          'static_info': self.fixed_statistics
+        }
+        pickle.dump(info, f)
 
     elapsed = time.time() - start
     print('Loaded dataset in %d seconds' % elapsed)
