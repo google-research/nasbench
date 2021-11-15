@@ -1,7 +1,9 @@
 # Modifications from the original version
-1. Speedup the loading time (120 sec --> 30 sec for full dataset in my local env)
-2. Adapt to Python3
-3. Adapt to TensorFlow 2
+1. Speedup the loading time (120 sec --> 30 sec (for the first load), 4 sec (for the second or later load) for full dataset in my local env)
+2. Serialization of data at the first load to significantly speedup
+3. Adapt to Python3
+4. Adapt to TensorFlow 2
+
 # NASBench: A Neural Architecture Search Dataset and Benchmark
 
 This repository contains the code used for generating and interacting with the
