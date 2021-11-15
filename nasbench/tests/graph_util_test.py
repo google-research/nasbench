@@ -21,7 +21,8 @@ from __future__ import print_function
 import random
 from nasbench.lib import graph_util
 import numpy as np
-import tensorflow as tf   # Used for tf.test
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 
 class GraphUtilTest(tf.test.TestCase):

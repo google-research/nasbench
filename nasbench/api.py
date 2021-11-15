@@ -87,19 +87,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
+import pybase64
 import copy
 import json
 import os
+import pickle
 import random
 import time
+import ujson
 
 from nasbench.lib import config
 from nasbench.lib import evaluate
 from nasbench.lib import model_metrics_pb2
 from nasbench.lib import model_spec as _model_spec
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 # Bring ModelSpec to top-level for convenience. See lib/model_spec.py.
 ModelSpec = _model_spec.ModelSpec
@@ -107,6 +110,56 @@ ModelSpec = _model_spec.ModelSpec
 
 class OutOfDomainError(Exception):
   """Indicates that the requested graph is outside of the search domain."""
+
+
+def load_from_tf_record(dataset_file, is_full_data, ops_dict):
+  fixed_statistics, computed_statistics = {}, {}
+  valid_epochs = [4, 12, 36, 108] if is_full_data else [108]
+  size2sqrt = {size ** 2: size for size in range(1, 8)}
+
+  for serialized_row in tf.python_io.tf_record_iterator(dataset_file):
+    # Parse the data from the data file.
+    module_hash, epochs, raw_adjacency, raw_operations, raw_metrics = (
+        ujson.loads(serialized_row.decode('utf-8')))
+
+    metrics = model_metrics_pb2.ModelMetrics.FromString(
+        pybase64.b64decode(raw_metrics))
+
+    if module_hash not in fixed_statistics:
+      # First time seeing this module, initialize fixed statistics.
+      dim = size2sqrt[len(raw_adjacency)]
+      new_entry = {}
+      adjacency = np.fromiter(raw_adjacency, dtype=np.int8)
+      new_entry['module_adjacency'] = adjacency.reshape(dim, dim)
+      new_entry['module_operations'] = ops_dict[raw_operations]
+      new_entry['trainable_parameters'] = metrics.trainable_parameters
+      fixed_statistics[module_hash] = new_entry
+      computed_statistics[module_hash] = {e: [] for e in valid_epochs}
+
+    # Each data_point consists of the metrics recorded from a single
+    # train-and-evaluation of a model at a specific epoch length.
+    data_point = {}
+
+    # Note: metrics.evaluation_data[0] contains the computed metrics at the
+    # start of training (step 0) but this is unused by this API.
+
+    # Evaluation statistics at the half-way point of training
+    half_evaluation = metrics.evaluation_data[1]
+    data_point['halfway_training_time'] = half_evaluation.training_time
+    data_point['halfway_train_accuracy'] = half_evaluation.train_accuracy
+    data_point['halfway_validation_accuracy'] = half_evaluation.validation_accuracy
+    data_point['halfway_test_accuracy'] = half_evaluation.test_accuracy
+
+    # Evaluation statistics at the end of training
+    final_evaluation = metrics.evaluation_data[2]
+    data_point['final_training_time'] = final_evaluation.training_time
+    data_point['final_train_accuracy'] = final_evaluation.train_accuracy
+    data_point['final_validation_accuracy'] = final_evaluation.validation_accuracy
+    data_point['final_test_accuracy'] = final_evaluation.test_accuracy
+
+    computed_statistics[module_hash][epochs].append(data_point)
+
+  return computed_statistics, fixed_statistics
 
 
 class NASBench(object):
@@ -125,6 +178,13 @@ class NASBench(object):
     self.config = config.build_config()
     random.seed(seed)
 
+    filename_choices = ['nasbench_full.tfrecord', 'nasbench_only108.tfrecord']
+    if dataset_file.split('/')[-1] not in filename_choices:
+      raise ValueError('Dataset file name must be either of {}, '
+                       'but got {}'.format(filename_choices, dataset_file.split('/')[-1]))
+
+    is_full_data = dataset_file.split('.tfrecord')[-2].endswith('full')
+
     print('Loading dataset from file... This may take a few minutes...')
     start = time.time()
 
@@ -141,58 +201,31 @@ class NASBench(object):
 
     # Valid queriable epoch lengths. {4, 12, 36, 108} for the full dataset or
     # {108} for the smaller dataset with only the 108 epochs.
-    self.valid_epochs = set()
+    valid_epochs = [4, 12, 36, 108] if is_full_data else [108]
+    self.valid_epochs = set(valid_epochs)
 
-    for serialized_row in tf.python_io.tf_record_iterator(dataset_file):
-      # Parse the data from the data file.
-      module_hash, epochs, raw_adjacency, raw_operations, raw_metrics = (
-          json.loads(serialized_row.decode('utf-8')))
+    pkl_file = f"{dataset_file.split('.tfrecord')[0]}.pkl"
+    if os.path.exists(pkl_file):
+      with open(pkl_file, 'rb') as f:
+        statistics = pickle.load(f)
+        self.fixed_statistics = statistics['static_info']
+        self.computed_statistics = statistics['non_static_info']
+      if len(self.fixed_statistics) != 423624:
+        raise ValueError(f'Pickle file is invalid. Try `rm {pkl_file}` and run again.')
+    else:
+      ops_dict = self._get_ops_dict()
+      self.computed_statistics, self.fixed_statistics = load_from_tf_record(
+        dataset_file,
+        is_full_data,
+        ops_dict
+      )
 
-      dim = int(np.sqrt(len(raw_adjacency)))
-      adjacency = np.array([int(e) for e in list(raw_adjacency)], dtype=np.int8)
-      adjacency = np.reshape(adjacency, (dim, dim))
-      operations = raw_operations.split(',')
-      metrics = model_metrics_pb2.ModelMetrics.FromString(
-          base64.b64decode(raw_metrics))
-
-      if module_hash not in self.fixed_statistics:
-        # First time seeing this module, initialize fixed statistics.
-        new_entry = {}
-        new_entry['module_adjacency'] = adjacency
-        new_entry['module_operations'] = operations
-        new_entry['trainable_parameters'] = metrics.trainable_parameters
-        self.fixed_statistics[module_hash] = new_entry
-        self.computed_statistics[module_hash] = {}
-
-      self.valid_epochs.add(epochs)
-
-      if epochs not in self.computed_statistics[module_hash]:
-        self.computed_statistics[module_hash][epochs] = []
-
-      # Each data_point consists of the metrics recorded from a single
-      # train-and-evaluation of a model at a specific epoch length.
-      data_point = {}
-
-      # Note: metrics.evaluation_data[0] contains the computed metrics at the
-      # start of training (step 0) but this is unused by this API.
-
-      # Evaluation statistics at the half-way point of training
-      half_evaluation = metrics.evaluation_data[1]
-      data_point['halfway_training_time'] = half_evaluation.training_time
-      data_point['halfway_train_accuracy'] = half_evaluation.train_accuracy
-      data_point['halfway_validation_accuracy'] = (
-          half_evaluation.validation_accuracy)
-      data_point['halfway_test_accuracy'] = half_evaluation.test_accuracy
-
-      # Evaluation statistics at the end of training
-      final_evaluation = metrics.evaluation_data[2]
-      data_point['final_training_time'] = final_evaluation.training_time
-      data_point['final_train_accuracy'] = final_evaluation.train_accuracy
-      data_point['final_validation_accuracy'] = (
-          final_evaluation.validation_accuracy)
-      data_point['final_test_accuracy'] = final_evaluation.test_accuracy
-
-      self.computed_statistics[module_hash][epochs].append(data_point)
+      with open(pkl_file, 'wb') as f:
+        info = {
+          'non_static_info': self.computed_statistics,
+          'static_info': self.fixed_statistics
+        }
+        pickle.dump(info, f)
 
     elapsed = time.time() - start
     print('Loaded dataset in %d seconds' % elapsed)
@@ -200,6 +233,28 @@ class NASBench(object):
     self.history = {}
     self.training_time_spent = 0.0
     self.total_epochs_spent = 0
+
+  @staticmethod
+  def _get_ops_dict():
+    """Create a raw_operations to splitted operations mapping.
+
+    This mapping speeds up the data loading routine.
+
+    Returns:
+      ops_dict (Dict[str, List[str]]):
+        Given a raw_operations, returns a list of operations.
+    """
+
+    INPUT, OUTPUT = 'input', 'output'
+    ops_dict = {','.join([INPUT, OUTPUT]): [INPUT, OUTPUT]}
+    ops = ['conv1x1-bn-relu', 'conv3x3-bn-relu', 'maxpool3x3']
+    import itertools as ittr
+    for n_ops in range(3, 8):
+      for choices in ittr.product(ops, repeat=n_ops - 2):
+        splitted_ops = [INPUT, *choices, OUTPUT]
+        ops_dict[','.join(splitted_ops)] = splitted_ops
+
+    return ops_dict
 
   def query(self, model_spec, epochs=108, stop_halfway=False):
     """Fetch one of the evaluations for this model spec.
