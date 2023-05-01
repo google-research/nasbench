@@ -106,7 +106,7 @@ class Evaluator(object):
                total_workers=1,
                model_id_regex='^'):
     self.config = _config.build_config()
-    with tf.gfile.Open(models_file) as f:
+    with tf.io.gfile.GFile(models_file) as f:
       self.models = json.load(f)
 
     self.remainders = None
@@ -114,7 +114,7 @@ class Evaluator(object):
 
     if FLAGS.remainders_file:
       # Run only the modules and repeat numbers specified
-      with tf.gfile.Open(FLAGS.remainders_file) as f:
+      with tf.io.gfile.GFile(FLAGS.remainders_file) as f:
         self.remainders = json.load(f)
       self.remainders = sorted(self.remainders)
       self.num_models = len(self.remainders)
@@ -132,14 +132,14 @@ class Evaluator(object):
 
     # If the worker is recovering from a restart, figure out where to restart
     worker_recovery_dir = os.path.join(output_dir, '_recovery')
-    tf.gfile.MakeDirs(worker_recovery_dir)   # Silently succeeds if exists
+    tf.io.gfile.makedirs(worker_recovery_dir)   # Silently succeeds if exists
     self.recovery_file = os.path.join(worker_recovery_dir, str(worker_id))
-    if tf.gfile.Exists(self.recovery_file):
-      with tf.gfile.Open(self.recovery_file) as f:
+    if tf.io.gfile.exists(self.recovery_file):
+      with tf.io.gfile.GFile(self.recovery_file) as f:
         self.current_index = int(f.read())
     else:
       self.current_index = worker_id
-      with tf.gfile.Open(self.recovery_file, 'w') as f:
+      with tf.io.gfile.GFile(self.recovery_file, 'w') as f:
         f.write(str(self.current_index))
 
     assert self.current_index % self.total_workers == worker_id
@@ -152,7 +152,7 @@ class Evaluator(object):
       self._evaluate_work_unit(self.current_index)
 
       self.current_index += self.total_workers
-      with tf.gfile.Open(self.recovery_file, 'w') as f:
+      with tf.io.gfile.GFile(self.recovery_file, 'w') as f:
         f.write(str(self.current_index))
 
   def _evaluate_work_unit(self, index):
@@ -198,7 +198,7 @@ class Evaluator(object):
 
     # Write data to model_dir
     output_file = os.path.join(model_dir, RESULTS_FILE)
-    with tf.gfile.Open(output_file, 'w') as f:
+    with tf.io.gfile.GFile(output_file, 'w') as f:
       json.dump(meta, f, cls=NumpyEncoder)
 
     # Delete some files to reclaim space
@@ -207,7 +207,7 @@ class Evaluator(object):
   def _clean_model_dir(self, model_dir):
     """Cleans the output model directory to reclaim disk space."""
     saved_prefixes = [CHECKPOINT_PREFIX, RESULTS_FILE]
-    all_files = tf.gfile.ListDirectory(model_dir)
+    all_files = tf.io.gfile.listdir(model_dir)
     files_to_keep = set()
     for filename in all_files:
       for prefix in saved_prefixes:
@@ -218,10 +218,10 @@ class Evaluator(object):
     for filename in all_files:
       if filename not in files_to_keep:
         full_filename = os.path.join(model_dir, filename)
-        if tf.gfile.IsDirectory(full_filename):
-          tf.gfile.DeleteRecursively(full_filename)
+        if tf.io.gfile.isdir(full_filename):
+          tf.io.gfile.rmtree(full_filename)
         else:
-          tf.gfile.Remove(full_filename)
+          tf.io.gfile.remove(full_filename)
 
 
 def main(args):

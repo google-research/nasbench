@@ -100,7 +100,7 @@ class CIFARInput(object):
     if is_training:
       # Shuffle buffer with whole dataset to ensure full randomness per epoch
       dataset = dataset.cache().apply(
-          tf.contrib.data.shuffle_and_repeat(
+          tf.data.experimental.shuffle_and_repeat(
               buffer_size=self.num_images))
 
     # This is a hack to allow computing metrics on a fixed batch on TPU. Because
@@ -112,7 +112,7 @@ class CIFARInput(object):
     # Parse, preprocess, and batch images
     parser_fn = functools.partial(_parser, is_training)
     dataset = dataset.apply(
-        tf.contrib.data.map_and_batch(
+        tf.data.experimental.map_and_batch(
             parser_fn,
             batch_size=batch_size,
             num_parallel_batches=self.config['tpu_num_shards'],
@@ -122,7 +122,7 @@ class CIFARInput(object):
     dataset = dataset.map(functools.partial(_set_batch_dimension, batch_size))
 
     # Prefetch to overlap in-feed with training
-    dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
+    dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
 
     return dataset
 
@@ -140,11 +140,11 @@ def _preprocess(image):
     preprocessed image with the same dimensions.
   """
   # Pad 4 pixels on all sides with 0
-  image = tf.image.resize_image_with_crop_or_pad(
+  image = tf.image.resize_with_crop_or_pad(
       image, HEIGHT + 8, WIDTH + 8)
 
   # Random crop
-  image = tf.random_crop(image, [HEIGHT, WIDTH, 3], seed=0)
+  image = tf.image.random_crop(image, [HEIGHT, WIDTH, 3], seed=0)
 
   # Random flip
   image = tf.image.random_flip_left_right(image, seed=0)
@@ -154,17 +154,17 @@ def _preprocess(image):
 
 def _parser(use_preprocessing, serialized_example):
   """Parses a single tf.Example into image and label tensors."""
-  features = tf.parse_single_example(
-      serialized_example,
+  features = tf.io.parse_single_example(
+      serialized=serialized_example,
       features={
-          'image': tf.FixedLenFeature([], tf.string),
-          'label': tf.FixedLenFeature([], tf.int64),
+          'image': tf.io.FixedLenFeature([], tf.string),
+          'label': tf.io.FixedLenFeature([], tf.int64),
       })
-  image = tf.decode_raw(features['image'], tf.uint8)
+  image = tf.io.decode_raw(features['image'], tf.uint8)
   image.set_shape([3 * HEIGHT * WIDTH])
   image = tf.reshape(image, [3, HEIGHT, WIDTH])
   # TODO(chrisying): handle NCHW format
-  image = tf.transpose(image, [1, 2, 0])
+  image = tf.transpose(a=image, perm=[1, 2, 0])
   image = tf.cast(image, tf.float32)
   if use_preprocessing:
     image = _preprocess(image)

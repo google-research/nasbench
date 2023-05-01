@@ -133,7 +133,7 @@ class ModelBuilderTest(tf.test.TestCase):
       tf_matrix = tf.constant(matrix, dtype=tf.float32)
       tf_cov_tensor = model_builder._covariance_matrix(tf_matrix)
 
-      with tf.Session() as sess:
+      with tf.compat.v1.Session() as sess:
         tf_cov = sess.run(tf_cov_tensor)
 
       np_cov = np.cov(matrix)

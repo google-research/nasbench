@@ -54,7 +54,7 @@ def build_model_fn(spec, config, num_train_images):
     aux_activations = []
 
     # Initial stem convolution
-    with tf.variable_scope('stem'):
+    with tf.compat.v1.variable_scope('stem'):
       net = base_ops.conv_bn_relu(
           features, 3, config['stem_filter_size'],
           is_training, config['data_format'])
@@ -65,7 +65,7 @@ def build_model_fn(spec, config, num_train_images):
 
       # Downsample at start (except first)
       if stack_num > 0:
-        net = tf.layers.max_pooling2d(
+        net = tf.compat.v1.layers.max_pooling2d(
             inputs=net,
             pool_size=(2, 2),
             strides=(2, 2),
@@ -75,9 +75,9 @@ def build_model_fn(spec, config, num_train_images):
         # Double output channels each time we downsample
         channels *= 2
 
-      with tf.variable_scope('stack{}'.format(stack_num)):
+      with tf.compat.v1.variable_scope('stack{}'.format(stack_num)):
         for module_num in range(config['num_modules_per_stack']):
-          with tf.variable_scope('module{}'.format(module_num)):
+          with tf.compat.v1.variable_scope('module{}'.format(module_num)):
             net = build_module(
                 spec,
                 inputs=net,
@@ -87,14 +87,14 @@ def build_model_fn(spec, config, num_train_images):
 
     # Global average pool
     if config['data_format'] == 'channels_last':
-      net = tf.reduce_mean(net, [1, 2])
+      net = tf.reduce_mean(input_tensor=net, axis=[1, 2])
     elif config['data_format'] == 'channels_first':
-      net = tf.reduce_mean(net, [2, 3])
+      net = tf.reduce_mean(input_tensor=net, axis=[2, 3])
     else:
       raise ValueError('invalid data_format')
 
     # Fully-connected layer to labels
-    logits = tf.layers.dense(
+    logits = tf.compat.v1.layers.dense(
         inputs=net,
         units=config['num_labels'])
 
@@ -105,12 +105,12 @@ def build_model_fn(spec, config, num_train_images):
       # compute the loss or anything dependent on it (i.e., the gradients).
       loss = tf.constant(0.0)
     else:
-      loss = tf.losses.softmax_cross_entropy(
+      loss = tf.compat.v1.losses.softmax_cross_entropy(
           onehot_labels=tf.one_hot(labels, config['num_labels']),
           logits=logits)
 
       loss += config['weight_decay'] * tf.add_n(
-          [tf.nn.l2_loss(v) for v in tf.trainable_variables()])
+          [tf.nn.l2_loss(v) for v in tf.compat.v1.trainable_variables()])
 
     # Use inference mode to compute some useful metrics on a fixed sample
     # Due to the batch being sharded on TPU, these metrics should be run on CPU
@@ -119,33 +119,33 @@ def build_model_fn(spec, config, num_train_images):
     if mode == tf.estimator.ModeKeys.PREDICT:
       parameter_norms = {
           'param:' + tensor.name:
-          tf.expand_dims(tf.norm(tensor, ord=2), 0)
-          for tensor in tf.trainable_variables()
+          tf.expand_dims(tf.norm(tensor=tensor, ord=2), 0)
+          for tensor in tf.compat.v1.trainable_variables()
       }
 
       # Compute gradients of all parameters and the input simultaneously
       all_params_names = []
       all_params_tensors = []
-      for tensor in tf.trainable_variables():
+      for tensor in tf.compat.v1.trainable_variables():
         all_params_names.append('param_grad_norm:' + tensor.name)
         all_params_tensors.append(tensor)
       all_params_names.append('input_grad_norm')
       all_params_tensors.append(features)
 
-      grads = tf.gradients(loss, all_params_tensors)
+      grads = tf.gradients(ys=loss, xs=all_params_tensors)
 
       param_gradient_norms = {}
       for name, grad in zip(all_params_names, grads)[:-1]:
         if grad is not None:
           param_gradient_norms[name] = (
-              tf.expand_dims(tf.norm(grad, ord=2), 0))
+              tf.expand_dims(tf.norm(tensor=grad, ord=2), 0))
         else:
           param_gradient_norms[name] = (
               tf.expand_dims(tf.constant(0.0), 0))
 
       if grads[-1] is not None:
         input_grad_norm = tf.sqrt(tf.reduce_sum(
-            tf.square(grads[-1]), axis=[1, 2, 3]))
+            input_tensor=tf.square(grads[-1]), axis=[1, 2, 3]))
       else:
         input_grad_norm = tf.expand_dims(tf.constant(0.0), 0)
 
@@ -164,10 +164,10 @@ def build_model_fn(spec, config, num_train_images):
       predictions.update(param_gradient_norms)
       predictions.update(covariance_matrices)
 
-      return tf.contrib.tpu.TPUEstimatorSpec(mode=mode, predictions=predictions)
+      return tf.compat.v1.estimator.tpu.TPUEstimatorSpec(mode=mode, predictions=predictions)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
-      global_step = tf.train.get_or_create_global_step()
+      global_step = tf.compat.v1.train.get_or_create_global_step()
       base_lr = config['learning_rate']
       if config['use_tpu']:
         base_lr *= config['tpu_num_shards']
@@ -197,42 +197,42 @@ def build_model_fn(spec, config, num_train_images):
                   0.1 * base_lr,
                   0.01 * base_lr,
                   0.0001 * base_lr]
-        learning_rate = tf.train.piecewise_constant(
+        learning_rate = tf.compat.v1.train.piecewise_constant(
             global_step, boundaries, values)
 
       else:
         raise ValueError('invalid lr_decay_method')
 
       # Set LR to 0 for step 0 to initialize the weights without training
-      learning_rate = tf.where(tf.equal(global_step, 0), 0.0, learning_rate)
+      learning_rate = tf.compat.v1.where(tf.equal(global_step, 0), 0.0, learning_rate)
 
-      optimizer = tf.train.RMSPropOptimizer(
+      optimizer = tf.compat.v1.train.RMSPropOptimizer(
           learning_rate=learning_rate,
           momentum=config['momentum'],
           epsilon=1.0)
       if config['use_tpu']:
-        optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
+        optimizer = tf.compat.v1.tpu.CrossShardOptimizer(optimizer)
 
       # Update ops required for batch norm moving variables
-      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
       with tf.control_dependencies(update_ops):
         train_op = optimizer.minimize(loss, global_step)
 
-      return tf.contrib.tpu.TPUEstimatorSpec(
+      return tf.compat.v1.estimator.tpu.TPUEstimatorSpec(
           mode=mode,
           loss=loss,
           train_op=train_op)
 
     elif mode == tf.estimator.ModeKeys.EVAL:
       def metric_fn(labels, logits):
-        predictions = tf.argmax(logits, axis=1)
-        accuracy = tf.metrics.accuracy(labels, predictions)
+        predictions = tf.argmax(input=logits, axis=1)
+        accuracy = tf.compat.v1.metrics.accuracy(labels, predictions)
 
         return {'accuracy': accuracy}
 
       eval_metrics = (metric_fn, [labels, logits])
 
-      return tf.contrib.tpu.TPUEstimatorSpec(
+      return tf.compat.v1.estimator.tpu.TPUEstimatorSpec(
           mode=mode,
           loss=loss,
           eval_metrics=eval_metrics)
@@ -279,7 +279,7 @@ def build_module(spec, inputs, channels, is_training):
 
   final_concat_in = []
   for t in range(1, num_vertices - 1):
-    with tf.variable_scope('vertex_{}'.format(t)):
+    with tf.compat.v1.variable_scope('vertex_{}'.format(t)):
       # Create interior connections, truncating if necessary
       add_in = [truncate(tensors[src], vertex_channels[t], spec.data_format)
                 for src in range(1, t) if spec.matrix[src, t]]
@@ -311,7 +311,7 @@ def build_module(spec, inputs, channels, is_training):
   if not final_concat_in:
     # No interior vertices, input directly connected to output
     assert spec.matrix[0, num_vertices - 1]
-    with tf.variable_scope('output'):
+    with tf.compat.v1.variable_scope('output'):
       outputs = projection(
           tensors[0],
           channels,
@@ -337,7 +337,7 @@ def build_module(spec, inputs, channels, is_training):
 
 def projection(inputs, channels, is_training, data_format):
   """1x1 projection (as in ResNet) followed by batch normalization and ReLU."""
-  with tf.variable_scope('projection'):
+  with tf.compat.v1.variable_scope('projection'):
     net = base_ops.conv_bn_relu(inputs, 1, channels, is_training, data_format)
 
   return net
@@ -418,7 +418,7 @@ def compute_vertex_channels(input_channels, output_channels, matrix):
           vertex_channels[v] = max(vertex_channels[v], vertex_channels[dst])
     assert vertex_channels[v] > 0
 
-  tf.logging.info('vertex_channels: %s', str(vertex_channels))
+  tf.compat.v1.logging.info('vertex_channels: %s', str(vertex_channels))
 
   # Sanity check, verify that channels never increase and final channels add up.
   final_fan_in = 0
@@ -451,11 +451,11 @@ def _covariance_matrix(activations):
   """
   batch_size = activations.get_shape()[0].value
   flattened = tf.reshape(activations, [batch_size, -1])
-  means = tf.reduce_mean(flattened, axis=1, keepdims=True)
+  means = tf.reduce_mean(input_tensor=flattened, axis=1, keepdims=True)
 
   centered = flattened - means
-  squared = tf.matmul(centered, tf.transpose(centered))
-  cov = squared / (tf.cast(tf.shape(flattened)[1], tf.float32) - 1)
+  squared = tf.matmul(centered, tf.transpose(a=centered))
+  cov = squared / (tf.cast(tf.shape(input=flattened)[1], tf.float32) - 1)
 
   return cov
 
