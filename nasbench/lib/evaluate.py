@@ -27,7 +27,7 @@ import numpy as np
 import tensorflow as tf
 
 VALID_EXCEPTIONS = (
-    tf.train.NanLossDuringTrainingError,  # NaN loss
+    tf.estimator.NanLossDuringTrainingError,  # NaN loss
     tf.errors.ResourceExhaustedError,     # OOM
     tf.errors.InvalidArgumentError,       # NaN gradient
     tf.errors.DeadlineExceededError,      # Timed out
@@ -110,10 +110,10 @@ class _TrainAndEvaluator(object):
     while True:
       # Delete everything in the model dir at the start of each attempt
       try:
-        tf.gfile.DeleteRecursively(self.model_dir)
+        tf.io.gfile.rmtree(self.model_dir)
       except tf.errors.NotFoundError:
         pass
-      tf.gfile.MakeDirs(self.model_dir)
+      tf.io.gfile.makedirs(self.model_dir)
 
       try:
         # Train
@@ -157,7 +157,7 @@ class _TrainAndEvaluator(object):
         break     # Break from retry loop on success
       except VALID_EXCEPTIONS as e:   # pylint: disable=catching-non-exception
         attempts += 1
-        tf.logging.warning(str(e))
+        tf.compat.v1.logging.warning(str(e))
         if attempts >= self.config['max_attempts']:
           raise AbortError(str(e))
 
@@ -260,11 +260,11 @@ def _create_estimator(spec, config, model_dir,
   # Estimator will save a checkpoint at the end of every train() call. Disable
   # automatic checkpoints by setting the time interval between checkpoints to
   # a very large value.
-  run_config = tf.contrib.tpu.RunConfig(
+  run_config = tf.compat.v1.estimator.tpu.RunConfig(
       model_dir=model_dir,
       keep_checkpoint_max=3,    # Keeps ckpt at start, halfway, and end
       save_checkpoints_secs=2**30,
-      tpu_config=tf.contrib.tpu.TPUConfig(
+      tpu_config=tf.compat.v1.estimator.tpu.TPUConfig(
           iterations_per_loop=config['tpu_iterations_per_loop'],
           num_shards=config['tpu_num_shards']))
 
@@ -274,7 +274,7 @@ def _create_estimator(spec, config, model_dir,
   if num_sample_images and config['use_tpu']:
     num_sample_images *= config['tpu_num_shards']
 
-  estimator = tf.contrib.tpu.TPUEstimator(
+  estimator = tf.compat.v1.estimator.tpu.TPUEstimator(
       use_tpu=config['use_tpu'],
       model_fn=model_builder.build_model_fn(
           spec, config, num_train_images),
@@ -298,14 +298,14 @@ def _evaluate(estimator, input_data, config, name=None):
 
 def _get_param_count(model_dir):
   """Get trainable param count from the model directory."""
-  tf.reset_default_graph()
+  tf.compat.v1.reset_default_graph()
   checkpoint = tf.train.get_checkpoint_state(model_dir)
-  with tf.Session() as sess:
-    saver = tf.train.import_meta_graph(
+  with tf.compat.v1.Session() as sess:
+    saver = tf.compat.v1.train.import_meta_graph(
         checkpoint.model_checkpoint_path + '.meta')
     saver.restore(sess, checkpoint.model_checkpoint_path)
     params = np.sum([np.prod(v.get_shape().as_list())
-                     for v in tf.trainable_variables()])
+                     for v in tf.compat.v1.trainable_variables()])
 
   return params
 

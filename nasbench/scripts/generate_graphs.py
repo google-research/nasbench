@@ -132,7 +132,7 @@ def main(_):
     logging.info('Up to %d vertices: %d graphs (%d without hashing)',
                  vertices, len(buckets), total_graphs)
 
-  with tf.gfile.Open(FLAGS.output_file, 'w') as f:
+  with tf.io.gfile.GFile(FLAGS.output_file, 'w') as f:
     json.dump(buckets, f, sort_keys=True)
 
 

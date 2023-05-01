@@ -144,8 +144,8 @@ def main(_):
   spec = create_best_nasbench_spec(config)
 
   data = evaluate.augment_and_evaluate(spec, config, FLAGS.model_dir)
-  tf.logging.info(data)
+  tf.compat.v1.logging.info(data)
 
 
 if __name__ == '__main__':
-  tf.app.run(main)
+  tf.compat.v1.app.run(main)
